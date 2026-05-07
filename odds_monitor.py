@@ -56,12 +56,18 @@ def run():
                 
             data = res.json()
             if data.get("response"):
+                logging.info(f"✅ Trovate {len(data['response'])} partite per il {date}")
+                
                 for match_data in data["response"]:
-                    fixture_id = match_data["fixture"]["id"]
-                    home = match_data["fixture"]["teams"]["home"]["name"]
-                    away = match_data["fixture"]["teams"]["away"]["name"]
-                    league = match_data["league"]["name"]
-                    
+                    # CORREZIONE QUI: teams è a livello root, non dentro fixture
+                    try:
+                        home = match_data["teams"]["home"]["name"]
+                        away = match_data["teams"]["away"]["name"]
+                        fixture_id = match_data["fixture"]["id"]
+                        league = match_data["league"]["name"]
+                    except KeyError:
+                        continue # Salta se mancano dati essenziali
+                        
                     # Cerca Bet365 nei bookmakers
                     bk_365 = None
                     for bk in match_data.get("bookmakers", []):
@@ -76,7 +82,6 @@ def run():
                         # Bet 5 = BTTS, Bet 8 = Goals Over/Under
                         if bet["id"] in [5, 8]: 
                             for val in bet.get("values", []):
-                                # Filtriamo solo "Yes" (BTTS) e "Over 2.5"
                                 target_val = None
                                 if bet["id"] == 5 and val["value"] == "Yes": target_val = "BTTS Sì"
                                 if bet["id"] == 8 and val["value"] == "Over 2.5": target_val = "Over 2.5"

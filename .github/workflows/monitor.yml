@@ -1,0 +1,29 @@
+name: Odds Monitor
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install requests
+        run: pip install requests
+      - name: Run monitor
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python odds_monitor.py
+      - name: Save state
+        run: |
+          git config --global user.name "odds-bot"
+          git config --global user.email "bot@github.com"
+          git add odds_state.json
+          git diff --quiet && git diff --staged --quiet || git commit -m "update state [skip ci]"
+          git push

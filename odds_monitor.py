@@ -1,6 +1,7 @@
 import requests, json, os, logging
 from datetime import datetime, timedelta
 
+# 🔑 CONFIGURAZIONE
 API_KEY = os.getenv("API_FOOTBALL_KEY")
 TG_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID")
@@ -25,7 +26,7 @@ def send_telegram(msg):
     except Exception as e: logging.error(f"Telegram Error: {e}")
 
 def run():
-    logging.info("🟢 Avvio Bot (Robust Fix)...")
+    logging.info("🟢 Avvio Bot (Fix Estrazione Squadre)...")
     if not API_KEY:
         logging.error("❌ API Key mancante!")
         return
@@ -43,12 +44,14 @@ def run():
 
     for date in [today, tomorrow]:
         try:
+            # Richiesta ODDS per Bet365 (ID 8)
             res = requests.get(f"{base_url}/odds", headers=headers, params={"date": date, "bookmaker": "8"}, timeout=15)
+            
             if res.status_code == 429:
                 logging.warning("⏳ Rate limit!")
                 break
             if res.status_code != 200:
-                logging.error(f"❌ Errore API: {res.status_code}")
+                logging.error(f" Errore API: {res.status_code}")
                 continue
 
             data = res.json()
@@ -57,23 +60,31 @@ def run():
                 logging.info(f"ℹ️ {date}: Nessuna partita")
                 continue
 
-            logging.info(f"✅ {date}: {len(matches)} partite trovate")
+            logging.info(f"✅ {date}: {len(matches)} partite trovate con quote Bet365")
 
-            # 🔍 DIAGNOSTICA: Se la struttura è diversa, lo vediamo subito
-            if "teams" not in matches[0]:
-                logging.warning(f"🔍 Struttura API diversa dal previsto! Chiavi presenti: {list(matches[0].keys())}")
+            # 🔍 DEBUG: Analizziamo le prime 3 partite per conferma
+            for i, m in enumerate(matches[:3]):
+                try:
+                    fixture = m.get("fixture", {})
+                    teams = fixture.get("teams", {}) # CORREZIONE QUI
+                    home = teams.get("home", {}).get("name", "Unknown")
+                    away = teams.get("away", {}).get("name", "Unknown")
+                    league = m.get("league", {}).get("name", "Unknown")
+                    logging.info(f"   📊 Esempio {i+1}: {home} vs {away} ({league})")
+                except Exception as e:
+                    logging.error(f"   Errore debug: {e}")
 
+            # Ora processiamo TUTTE le partite
             for m in matches:
                 try:
-                    # Estrazione SICURA con .get()
-                    teams = m.get("teams", {})
+                    fixture = m.get("fixture", {})
+                    teams = fixture.get("teams", {})
                     home = teams.get("home", {}).get("name")
                     away = teams.get("away", {}).get("name")
-                    fid = m.get("fixture", {}).get("id")
+                    fid = fixture.get("id")
                     league = m.get("league", {}).get("name")
 
                     if not all([home, away, fid, league]):
-                        logging.warning(f"⚠️ Dati incompleti per fixture {fid}. Skip.")
                         continue
 
                     bk = next((b for b in m.get("bookmakers", []) if b.get("id") == 8), None)
@@ -96,7 +107,7 @@ def run():
                                     processed += 1
                                 except ValueError: continue
                 except Exception as e:
-                    logging.error(f"❌ Errore processing {m.get('fixture',{}).get('id')}: {e}")
+                    logging.error(f" Errore processing {m.get('fixture',{}).get('id')}: {e}")
 
         except Exception as e:
             logging.error(f"❌ Errore critico {date}: {e}")

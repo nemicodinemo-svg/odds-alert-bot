@@ -1,7 +1,6 @@
 import requests, json, os, logging
 from datetime import datetime, timedelta
 
-# 🔑 CONFIGURAZIONE
 API_KEY = os.getenv("API_FOOTBALL_KEY")
 TG_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID")
@@ -26,7 +25,7 @@ def send_telegram(msg):
     except Exception as e: logging.error(f"Telegram Error: {e}")
 
 def run():
-    logging.info("🟢 Avvio Bot (Fix Estrazione Squadre)...")
+    logging.info("🟢 Avvio Bot (DEBUG COMPLETO)...")
     if not API_KEY:
         logging.error("❌ API Key mancante!")
         return
@@ -44,43 +43,54 @@ def run():
 
     for date in [today, tomorrow]:
         try:
-            # Richiesta ODDS per Bet365 (ID 8)
             res = requests.get(f"{base_url}/odds", headers=headers, params={"date": date, "bookmaker": "8"}, timeout=15)
             
-            if res.status_code == 429:
-                logging.warning("⏳ Rate limit!")
-                break
-            if res.status_code != 200:
-                logging.error(f" Errore API: {res.status_code}")
-                continue
+            if res.status_code != 200: continue
 
             data = res.json()
             matches = data.get("response", [])
-            if not matches:
-                logging.info(f"ℹ️ {date}: Nessuna partita")
-                continue
+            if not matches: continue
 
-            logging.info(f"✅ {date}: {len(matches)} partite trovate con quote Bet365")
+            logging.info(f"✅ {date}: {len(matches)} partite")
 
-            # 🔍 DEBUG: Analizziamo le prime 3 partite per conferma
-            for i, m in enumerate(matches[:3]):
-                try:
-                    fixture = m.get("fixture", {})
-                    teams = fixture.get("teams", {}) # CORREZIONE QUI
-                    home = teams.get("home", {}).get("name", "Unknown")
-                    away = teams.get("away", {}).get("name", "Unknown")
-                    league = m.get("league", {}).get("name", "Unknown")
-                    logging.info(f"   📊 Esempio {i+1}: {home} vs {away} ({league})")
-                except Exception as e:
-                    logging.error(f"   Errore debug: {e}")
+            # 🔍 STAMPIAMO LA STRUTTURA COMPLETA delle prime 2 partite
+            for i, m in enumerate(matches[:2]):
+                logging.info(f"\n{'='*60}")
+                logging.info(f"PARTITA {i+1} - STRUTTURA COMPLETA:")
+                logging.info(f"{'='*60}")
+                logging.info(f"Chiavi principali: {list(m.keys())}")
+                
+                # Fixture
+                fixture = m.get("fixture", {})
+                logging.info(f"\nContenuto 'fixture': {json.dumps(fixture, indent=2)[:500]}")
+                
+                # League
+                league = m.get("league", {})
+                logging.info(f"\nContenuto 'league': {json.dumps(league, indent=2)[:300]}")
+                
+                # Bookmakers
+                bks = m.get("bookmakers", [])
+                if bks:
+                    logging.info(f"\nBookmaker trovati: {len(bks)}")
+                    logging.info(f"Primo bookmaker: {bks[0].get('name')} (ID: {bks[0].get('id')})")
+                
+                logging.info(f"{'='*60}\n")
 
-            # Ora processiamo TUTTE le partite
+            # Processamento normale
             for m in matches:
                 try:
+                    # Proviamo TUTTI i percorsi possibili per i nomi squadre
                     fixture = m.get("fixture", {})
+                    
+                    # Percorso 1: fixture.teams.home.name
                     teams = fixture.get("teams", {})
-                    home = teams.get("home", {}).get("name")
-                    away = teams.get("away", {}).get("name")
+                    home = teams.get("home", {}).get("name") if teams else None
+                    away = teams.get("away", {}).get("name") if teams else None
+                    
+                    # Percorso 2: fixture.home / fixture.away (diretto)
+                    if not home: home = fixture.get("home", {}).get("name") or fixture.get("home")
+                    if not away: away = fixture.get("away", {}).get("name") or fixture.get("away")
+                    
                     fid = fixture.get("id")
                     league = m.get("league", {}).get("name")
 
@@ -107,7 +117,7 @@ def run():
                                     processed += 1
                                 except ValueError: continue
                 except Exception as e:
-                    logging.error(f" Errore processing {m.get('fixture',{}).get('id')}: {e}")
+                    logging.error(f" Errore: {e}")
 
         except Exception as e:
             logging.error(f"❌ Errore critico {date}: {e}")
@@ -115,7 +125,6 @@ def run():
     save_state(state)
     if alerts:
         send_telegram("🚨 ALERT\n\n" + "\n\n".join(alerts[:10]))
-        logging.info(f" Inviati {len(alerts)} alert")
     else:
         logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
     logging.info("🔄 Ciclo completato.")

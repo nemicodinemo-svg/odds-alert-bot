@@ -1,7 +1,7 @@
 name: Odds Monitor
 on:
   schedule:
-    - cron: '*/45 * * * *'
+    - cron: '0 * * * *'  # ← OGNI ORA ESATTA (più stabile per GitHub Free)
   workflow_dispatch:
 jobs:
   run:

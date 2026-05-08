@@ -123,7 +123,6 @@ def run():
     else:
         logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
 
-    send_telegram("🧪 <b>TEST ALERT</b>\nQuesto è un messaggio di prova.\nOver 2.5: 2.00 → 1.80 (10%↓)")
     logging.info("🔄 Ciclo completato.")
 
 if __name__ == "__main__":

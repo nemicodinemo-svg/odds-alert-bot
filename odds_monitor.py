@@ -24,8 +24,25 @@ def send_telegram(msg):
         logging.info(f"Telegram: {r.status_code}")
     except Exception as e: logging.error(f"Telegram Error: {e}")
 
+def fetch_teams_cache(dates, headers, base_url):
+    """Scarica i nomi delle squadre per le date richieste"""
+    cache = {}
+    for date in dates:
+        try:
+            res = requests.get(f"{base_url}/fixtures", headers=headers, params={"date": date}, timeout=10)
+            if res.status_code == 200:
+                for fix in res.json().get("response", []):
+                    fid = fix["fixture"]["id"]
+                    cache[fid] = {
+                        "home": fix["teams"]["home"]["name"],
+                        "away": fix["teams"]["away"]["name"],
+                        "league": fix["league"]["name"]
+                    }
+        except: pass
+    return cache
+
 def run():
-    logging.info("🟢 Avvio Bot (DEBUG COMPLETO)...")
+    logging.info("🟢 Avvio Bot (Versione Definitiva)...")
     if not API_KEY:
         logging.error("❌ API Key mancante!")
         return
@@ -35,73 +52,49 @@ def run():
 
     today = datetime.now().strftime("%Y-%m-%d")
     tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    dates = [today, tomorrow]
+
+    # 1️⃣ Scarica cache nomi squadre
+    teams_cache = fetch_teams_cache(dates, headers, base_url)
+    logging.info(f"📦 Cache squadre: {len(teams_cache)} partite")
 
     state = load_state()
     first_run = len(state) == 0
     alerts = []
     processed = 0
 
-    for date in [today, tomorrow]:
+    # 2️⃣ Scarica quote Bet365
+    for date in dates:
         try:
             res = requests.get(f"{base_url}/odds", headers=headers, params={"date": date, "bookmaker": "8"}, timeout=15)
             
+            if res.status_code == 429:
+                logging.warning("⏳ Rate limit!")
+                break
             if res.status_code != 200: continue
 
             data = res.json()
             matches = data.get("response", [])
             if not matches: continue
 
-            logging.info(f"✅ {date}: {len(matches)} partite")
+            logging.info(f"✅ {date}: {len(matches)} partite con quote Bet365")
 
-            # 🔍 STAMPIAMO LA STRUTTURA COMPLETA delle prime 2 partite
-            for i, m in enumerate(matches[:2]):
-                logging.info(f"\n{'='*60}")
-                logging.info(f"PARTITA {i+1} - STRUTTURA COMPLETA:")
-                logging.info(f"{'='*60}")
-                logging.info(f"Chiavi principali: {list(m.keys())}")
-                
-                # Fixture
-                fixture = m.get("fixture", {})
-                logging.info(f"\nContenuto 'fixture': {json.dumps(fixture, indent=2)[:500]}")
-                
-                # League
-                league = m.get("league", {})
-                logging.info(f"\nContenuto 'league': {json.dumps(league, indent=2)[:300]}")
-                
-                # Bookmakers
-                bks = m.get("bookmakers", [])
-                if bks:
-                    logging.info(f"\nBookmaker trovati: {len(bks)}")
-                    logging.info(f"Primo bookmaker: {bks[0].get('name')} (ID: {bks[0].get('id')})")
-                
-                logging.info(f"{'='*60}\n")
-
-            # Processamento normale
             for m in matches:
                 try:
-                    # Proviamo TUTTI i percorsi possibili per i nomi squadre
-                    fixture = m.get("fixture", {})
-                    
-                    # Percorso 1: fixture.teams.home.name
-                    teams = fixture.get("teams", {})
-                    home = teams.get("home", {}).get("name") if teams else None
-                    away = teams.get("away", {}).get("name") if teams else None
-                    
-                    # Percorso 2: fixture.home / fixture.away (diretto)
-                    if not home: home = fixture.get("home", {}).get("name") or fixture.get("home")
-                    if not away: away = fixture.get("away", {}).get("name") or fixture.get("away")
-                    
-                    fid = fixture.get("id")
-                    league = m.get("league", {}).get("name")
-
-                    if not all([home, away, fid, league]):
+                    fid = m.get("fixture", {}).get("id")
+                    if not fid or fid not in teams_cache:
                         continue
+                    
+                    # Prendi nomi dalla cache
+                    home = teams_cache[fid]["home"]
+                    away = teams_cache[fid]["away"]
+                    league = teams_cache[fid]["league"]
 
                     bk = next((b for b in m.get("bookmakers", []) if b.get("id") == 8), None)
                     if not bk: continue
 
                     for bet in bk.get("bets", []):
-                        if bet.get("id") in [1, 5, 8]:
+                        if bet.get("id") in [1, 5, 8]:  # 1X2, BTTS, Over/Under
                             for v in bet.get("values", []):
                                 try:
                                     price = float(v.get("odd"))
@@ -111,7 +104,7 @@ def run():
                                     if old and old > 0 and not first_run:
                                         drop = ((old - price) / old) * 100
                                         if drop >= 10:
-                                            alerts.append(f"📉 {v['value']}\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({drop:.1f}%↓)")
+                                            alerts.append(f"📉 <b>{v['value']}</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({drop:.1f}%↓)\n⏰ {m['fixture']['date'][:16]}")
 
                                     state[key] = price
                                     processed += 1
@@ -123,10 +116,13 @@ def run():
             logging.error(f"❌ Errore critico {date}: {e}")
 
     save_state(state)
+    
     if alerts:
-        send_telegram("🚨 ALERT\n\n" + "\n\n".join(alerts[:10]))
+        send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
+        logging.info(f" Inviati {len(alerts)} alert")
     else:
         logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
+    
     logging.info("🔄 Ciclo completato.")
 
 if __name__ == "__main__":

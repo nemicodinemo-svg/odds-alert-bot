@@ -1,7 +1,12 @@
 name: Odds Monitor
 on:
   schedule:
-    - cron: '0 * * * *'  # ← OGNI ORA ESATTA (più stabile per GitHub Free)
+    # 🟢 PICCO (11:00-21:00 ITA → 09:00-19:00 UTC) → Ogni 30 min
+    - cron: '0,30 9-19 * * *'
+    #  SERA (21:00-24:00 ITA → 19:00-22:00 UTC) → Ogni 1 ora
+    - cron: '0 19-21 * * *'
+    #  NOTTE (00:00-11:00 ITA → 22:00-09:00 UTC) → Ogni 2 ore
+    - cron: '0 0,2,4,6,8,22 * * *'
   workflow_dispatch:
 jobs:
   run:

@@ -1,50 +1,32 @@
-# 📊 Odds Alert Bot (API-Football)
+# 📊 Odds Drop Alert Bot
 
-Bot Python automatizzato su GitHub Actions che monitora le quote delle scommesse sportive in tempo reale e invia alert su Telegram quando le quote scendono significativamente ("Drop").
+Bot Python automatizzato su GitHub Actions che monitora le quote calcistiche di **Bet365** in tempo reale e invia alert su **Telegram** quando rileva cali significativi ("Drop").
 
 ## 🎯 Funzionalità Principali
-- **Monitoraggio:** Segue le partite di calcio (Football) con quote aperte.
-- **Bookmaker:** Si concentra esclusivamente su **Bet365** (ID: 8).
-- **Mercati Tracciati:**
-  - **1X2** (Match Winner) con logica "Smart Drop" per filtrare il rumore sulle quote alte.
-  - **BTTS** (Both Teams To Score - Sì).
-  - **Goals Over/Under** (Linee 1.5, 2.5, 3.5).
-- **Frequenza:** Esecuzione automatica ogni **45 minuti**.
-- **Alert:** Invia messaggio su Telegram se la quota scende oltre una soglia definita.
+- 🔄 **Esecuzione automatica:** Ogni ora (`0 * * * *`) via GitHub Actions Scheduler.
+- 📅 **Copertura:** Partite di oggi e domani.
+- 🎯 **Mercati monitorati:** 1X2 (Match Winner), BTTS (Sì), Over/Under 1.5 / 2.5 / 3.5.
+- 🧠 **Logica Smart Drop:** Soglie differenziate per filtrare il rumore sulle quote alte.
+- 💾 **Persistenza:** Salva lo storico quote in `odds_state.json` per confrontare i cicli.
+- 📱 **Notifiche:** Alert formattati in HTML su Telegram (max 10 per messaggio).
 
-## ⚙️ Configurazione & Requisiti
+## ⚙️ Configurazione Richiesta
+Imposta questi **GitHub Secrets** (`Settings > Secrets and variables > Actions`):
 
-### 🔑 GitHub Secrets (Impostare in Settings -> Secrets and variables -> Actions)
-| Nome Variabile | Descrizione |
+| Secret | Descrizione |
 | :--- | :--- |
-| `API_FOOTBALL_KEY` | Chiave API gratuita da [api-sports.io](https://dashboard.api-football.com/) (Limite: 100 req/giorno) |
-| `TG_BOT_TOKEN` | Token del bot Telegram creato con @BotFather |
+| `API_FOOTBALL_KEY` | Chiave gratuita da [api-football.com](https://www.api-football.com/) |
+| `TG_BOT_TOKEN` | Token del bot Telegram (creato con @BotFather) |
 | `TG_CHAT_ID` | Il tuo ID utente Telegram (ottenuto con @userinfobot) |
 
-### 📅 Cron Job (GitHub Actions)
-Configurato in `.github/workflows/monitor.yml`:
-- `cron: '*/45 * * * *'` → Gira ogni 45 minuti.
-- Consuma circa **64 richieste/giorno** (ben entro il limite gratuito di 100).
+## 🧠 Logica di Rilevamento Drop
+Il bot confronta le nuove quote con quelle salvate nel ciclo precedente. Scatta l'alert **solo se la quota scende** oltre queste soglie:
 
-##  Logica di Funzionamento ("Smart Drop")
+| Mercato / Fascia di Quota | Soglia Richiesta |
+| :--- | :--- |
+| **BTTS & Over/Under** | Calo ≥ 10% |
+| **1X2 Quote Basse (≤ 2.50)** | Calo ≥ 10% |
+| **1X2 Quote Medie (2.51 - 4.00)** | Calo ≥ 12% **OPPURE** ≥ 0.30 assoluto |
+| **1X2 Quote Alte (> 4.00)** | Calo ≥ 15% **E** ≥ 0.50 assoluto |
 
-Il bot salva lo stato delle quote in `odds_state.json` e confronta le nuove quote con quelle salvate.
-
-**Soglie di Alert:**
-1. **BTTS & Over/Under:** Scatta se il calo è **≥ 10%**.
-2. **1X2 (Quote Basse ≤ 2.50):** Scatta se calo **≥ 10%**.
-3. **1X2 (Quote Medie 2.51 - 4.00):** Scatta se calo **≥ 12%** OPPURE calo assoluto **≥ 0.30**.
-4. **1X2 (Quote Alte > 4.00):** Scatta se calo **≥ 15%** E calo assoluto **≥ 0.50** (per evitare falsi allarmi su quote alte volatili).
-
-## 📂 Struttura File
-- `odds_monitor.py`: Il codice principale Python che interroga l'API e invia gli alert.
-- `.github/workflows/monitor.yml`: Il file che dice a GitHub quando eseguire il bot.
-- `odds_state.json`: File generato automaticamente per memorizzare le quote vecchie.
-
-## 🚀 Come Riprendere o Modificare
-- **Per cambiare frequenza:** Modifica la riga `cron` in `monitor.yml`.
-- **Per aggiungere altri bookmaker:** Modifica `params={"bookmaker": "8"}` in `odds_monitor.py` (dove 8 è l'ID di Bet365).
-- **Per aggiungere Sisal o altri:** Bisogna trovare l'ID del bookmaker nella documentazione API-Football e aggiungerlo al ciclo di controllo.
-
-## 📝 Log e Debug
-I log vengono salvati in `odds_monitor.log`. Scarica l'artefatto "odds-state" da GitHub Actions per leggerli.
+## 📂 Struttura del Progetto

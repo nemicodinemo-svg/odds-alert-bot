@@ -1,7 +1,6 @@
 name: Odds Monitor
 on:
-  schedule:
-  workflow_dispatch:
+workflow_dispatch:
 jobs:
   run:
     runs-on: ubuntu-latest

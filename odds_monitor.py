@@ -7,15 +7,6 @@ TG_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 STATE_FILE = "odds_state.json"
 
-# Soglie drop intelligenti
-DROP_THRESHOLDS = {
-    "btts": {"percent": 10},
-    "ou": {"percent": 10},
-    "1x2_low": {"max_odds": 2.50, "percent": 10},
-    "1x2_mid": {"min_odds": 2.51, "max_odds": 4.00, "percent": 12, "absolute": 0.30},
-    "1x2_high": {"min_odds": 4.01, "percent": 15, "absolute": 0.50},
-}
-
 logging.basicConfig(filename="odds_monitor.log", level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s", filemode="a")
 
 def load_state():
@@ -34,15 +25,8 @@ def send_telegram(msg):
         logging.info(f"Telegram: {r.status_code}")
     except Exception as e: logging.error(f"Telegram Error: {e}")
 
-def check_drop(old, new, config):
-    if old <= new: return False
-    drop_pct = ((old - new) / old) * 100
-    if drop_pct < config["percent"]: return False
-    if "absolute" in config and (old - new) < config["absolute"]: return False
-    return True
-
 def run():
-    logging.info("🟢 Avvio Bot (Ottimizzato 45min + Mercati Estesi)...")
+    logging.info("🟢 Avvio Bot (DEBUG MODE)...")
     if not API_KEY:
         logging.error("❌ API Key mancante!")
         return
@@ -58,90 +42,102 @@ def run():
     alerts = []
     processed = 0
     
-    # 👉 Chiamata 1: Oggi
     for date in [today, tomorrow]:
         try:
+            # Richiesta ODDS per Bet365 (ID 8)
             res = requests.get(f"{base_url}/odds", headers=headers, params={"date": date, "bookmaker": "8"}, timeout=15)
+            
             if res.status_code == 429:
-                logging.warning("⏳ Rate limit! Stop.")
+                logging.warning("⏳ Rate limit!")
                 break
-            if res.status_code != 200: continue
+            if res.status_code != 200:
+                logging.error(f"❌ Errore API: {res.status_code} - {res.text}")
+                continue
                 
             data = res.json()
-            if not data.get("response"): continue
-                
-            logging.info(f"✅ {date}: {len(data['response'])} partite")
+            if not data.get("response"):
+                logging.info(f"ℹ️ {date}: Nessuna risposta dall'API")
+                continue
             
+            logging.info(f"✅ {date}: {len(data['response'])} partite trovate")
+            
+            # 🔍 DEBUG: Analizziamo ogni partita
+            for i, m in enumerate(data["response"][:3]):  # Analizziamo solo le prime 3 per non spammare
+                try:
+                    home = m["teams"]["home"]["name"]
+                    away = m["teams"]["away"]["name"]
+                    league = m["league"]["name"]
+                    fid = m["fixture"]["id"]
+                    
+                    logging.info(f"\n📊 PARTITA {i+1}: {home} vs {away}")
+                    logging.info(f"   Campionato: {league}")
+                    logging.info(f"   Fixture ID: {fid}")
+                    
+                    # Controlliamo TUTTI i bookmaker disponibili
+                    bookmakers = m.get("bookmakers", [])
+                    logging.info(f"   Bookmaker disponibili: {len(bookmakers)}")
+                    
+                    bk_names = [bk.get("name", "Unknown") for bk in bookmakers]
+                    logging.info(f"   Lista: {', '.join(bk_names[:10])}")  # Primi 10
+                    
+                    # Cerchiamo Bet365 specificamente
+                    bk_365 = next((bk for bk in bookmakers if bk["id"] == 8), None)
+                    
+                    if bk_365:
+                        logging.info(f"   ✅ Bet365 TROVATO!")
+                        bets = bk_365.get("bets", [])
+                        logging.info(f"   Mercati disponibili: {len(bets)}")
+                        for bet in bets:
+                            logging.info(f"     - {bet.get('name', 'Unknown')} (ID: {bet.get('id')})")
+                    else:
+                        logging.info(f"   ❌ Bet365 NON TROVATO per questa partita!")
+                    
+                except Exception as e:
+                    logging.error(f"   Errore analisi partita: {e}")
+            
+            # Ora processiamo normalmente tutte le partite
             for m in data["response"]:
                 try:
-                    home, away = m["teams"]["home"]["name"], m["teams"]["away"]["name"]
+                    home = m["teams"]["home"]["name"]
+                    away = m["teams"]["away"]["name"]
                     fid = m["fixture"]["id"]
                     league = m["league"]["name"]
-                    ko = m["fixture"]["date"][:16]
-                except KeyError: continue
-                
-                bk = next((b for b in m.get("bookmakers", []) if b["id"] == 8), None)
-                if not bk: continue
-
-                for bet in bk.get("bets", []):
-                    # 🎯 BTTS
-                    if bet["id"] == 5:
-                        for v in bet["values"]:
-                            if v["value"] == "Yes":
-                                price = float(v["odd"])
-                                key = f"{fid}_btts_yes"
-                                old = state.get(key)
-                                if old and old > 0 and not first_run and check_drop(old, price, DROP_THRESHOLDS["btts"]):
-                                    alerts.append(f"📉 <b>BTTS Sì</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({((old-price)/old)*100:.1f}%↓)\n⏰ {ko}")
-                                state[key] = price
-                                processed += 1
                     
-                    #  Over/Under (1.5, 2.5, 3.5)
-                    elif bet["id"] == 8:
-                        for v in bet["values"]:
-                            if v["value"] in ["Over 1.5", "Under 1.5", "Over 2.5", "Under 2.5", "Over 3.5", "Under 3.5"]:
-                                price = float(v["odd"])
-                                key = f"{fid}_{v['value'].replace(' ', '_')}"
-                                old = state.get(key)
-                                if old and old > 0 and not first_run and check_drop(old, price, DROP_THRESHOLDS["ou"]):
-                                    alerts.append(f"📉 <b>{v['value']}</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({((old-price)/old)*100:.1f}%↓)\n⏰ {ko}")
-                                state[key] = price
-                                processed += 1
+                    bk = next((b for b in m.get("bookmakers", []) if b["id"] == 8), None)
+                    if not bk:
+                        continue
                     
-                    #  1X2 Smart
-                    elif bet["id"] == 1:
-                        for v in bet["values"]:
-                            if v["value"] in ["Home", "Draw", "Away"]:
+                    for bet in bk.get("bets", []):
+                        if bet["id"] in [1, 5, 8]:  # 1X2, BTTS, Over/Under
+                            for v in bet["values"]:
                                 price = float(v["odd"])
-                                key = f"{fid}_1x2_{v['value']}"
+                                key = f"{fid}_{bet['id']}_{v['value'].replace(' ', '_')}"
                                 old = state.get(key)
                                 
-                                # Seleziona soglia in base alla quota
-                                if price <= 2.50: cfg = DROP_THRESHOLDS["1x2_low"]
-                                elif price <= 4.00: cfg = DROP_THRESHOLDS["1x2_mid"]
-                                else: cfg = DROP_THRESHOLDS["1x2_high"]
+                                if old and old > 0 and not first_run:
+                                    drop = ((old - price) / old) * 100
+                                    if drop >= 10:
+                                        alerts.append(f"📉 {v['value']}\n{home} vs {away}\n{old:.2f} → {price:.2f} ({drop:.1f}%↓)")
                                 
-                                if old and old > 0 and not first_run and check_drop(old, price, cfg):
-                                    alerts.append(f"📉 <b>1X2 {v['value']}</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({((old-price)/old)*100:.1f}%↓)\n⏰ {ko}")
                                 state[key] = price
                                 processed += 1
+                                
+                except Exception as e:
+                    logging.error(f"Errore processing: {e}")
+                    
         except Exception as e:
-            logging.error(f"Errore {date}: {e}")
+            logging.error(f"Errore critico {date}: {e}")
 
-    # 🧹 Pulizia stato: rimuovi partite con kickoff passato > 2h
-    now_ts = datetime.now().timestamp()
-    state = {k: v for k, v in state.items() if True} # Semplificato: l'API ci dà già solo partite attive
-    
     save_state(state)
     
     if alerts:
-        # Telegram limita a 4096 caratteri. Inviamo max 12 alert per messaggio
-        chunk = alerts[:12]
-        msg = "🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(chunk)
+        msg = "🚨 ALERT\n\n" + "\n\n".join(alerts[:10])
         send_telegram(msg)
-        logging.info(f"🚨 Inviati {len(chunk)} alert")
+        logging.info(f"🚨 Inviati {len(alerts)} alert")
     else:
-        logging.info(f"ℹ️ Nessun drop su {processed} quote")
+        logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
+    
+    logging.info("🔄 Ciclo completato.")
 
 if __name__ == "__main__":
     run()

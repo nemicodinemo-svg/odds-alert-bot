@@ -35,7 +35,7 @@ def save_state(data):
 def send_telegram(msg):
     """Invia messaggio a Telegram con gestione errori"""
     if not TG_TOKEN or not TG_CHAT_ID:
-        logging.warning("⚠️ Credenziali Telegram mancanti")
+        logging.warning("️ Credenziali Telegram mancanti")
         return
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     try:
@@ -69,14 +69,28 @@ def fetch_teams_cache(dates, headers, base_url):
     cache = {}
     for date in dates:
         try:
+            # DEBUG: Stampiamo cosa stiamo chiedendo
+            logging.info(f" Richiesta cache squadre per data: {date}")
+            
             res = requests.get(
                 f"{base_url}/fixtures",
                 headers=headers,
                 params={"date": date},
                 timeout=10
             )
+            
+            # DEBUG: Stampiamo la risposta API
+            logging.info(f" API Fixtures Status: {res.status_code}")
+            
             if res.status_code == 200:
-                for fix in res.json().get("response", []):
+                data = res.json()
+                total_fixtures = len(data.get("response", []))
+                logging.info(f"📅 {date}: {total_fixtures} partite trovate dall'API")
+                
+                if total_fixtures == 0:
+                    logging.warning(f"⚠️ Nessuna partita disponibile per {date}. Forse la data è passata o non ci sono eventi?")
+                
+                for fix in data.get("response", []):
                     fid = fix["fixture"]["id"]
                     teams = fix.get("teams", {})
                     league = fix.get("league", {})
@@ -86,12 +100,15 @@ def fetch_teams_cache(dates, headers, base_url):
                             "away": teams["away"]["name"],
                             "league": league.get("name", "Unknown")
                         }
+            else:
+                logging.error(f"❌ Errore API Fixtures {res.status_code}: {res.text}")
+                
         except Exception as e:
             logging.warning(f"⚠️ Errore cache squadre {date}: {e}")
     return cache
 
 def run():
-    logging.info("🟢 Avvio Bot (Versione Ottimizzata IT)...")
+    logging.info("🟢 Avvio Bot (Versione Ottimizzata IT + Debug)...")
     
     if not API_KEY:
         logging.error("❌ API Key mancante!")
@@ -100,13 +117,17 @@ def run():
     headers = {"x-apisports-key": API_KEY}
     base_url = "https://v3.football.api-sports.io"
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+    # Calcolo date in UTC (come fa GitHub Actions)
+    now_utc = datetime.utcnow()
+    today = now_utc.strftime("%Y-%m-%d")
+    tomorrow = (now_utc + timedelta(days=1)).strftime("%Y-%m-%d")
     dates = [today, tomorrow]
+    
+    logging.info(f"📅 Date monitorate (UTC): {today}, {tomorrow}")
 
     # 1️⃣ Scarica cache nomi squadre
     teams_cache = fetch_teams_cache(dates, headers, base_url)
-    logging.info(f"📦 Cache squadre: {len(teams_cache)} partite")
+    logging.info(f"📦 Cache squadre finale: {len(teams_cache)} partite")
 
     state = load_state()
     first_run = len(state) == 0
@@ -127,7 +148,7 @@ def run():
                 logging.warning("⏳ Rate limit API raggiunto!")
                 break
             if res.status_code != 200:
-                logging.warning(f"⚠️ API error {res.status_code} per {date}")
+                logging.warning(f"️ API Odds error {res.status_code} per {date}")
                 continue
 
             data = res.json()
@@ -142,6 +163,7 @@ def run():
                 try:
                     fid = m.get("fixture", {}).get("id")
                     if not fid or fid not in teams_cache:
+                        # Se manca nella cache, saltiamo (non abbiamo i nomi)
                         continue
                     
                     # Recupera dati dalla cache
@@ -200,9 +222,9 @@ def run():
     if alerts:
         msg = "🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10])
         send_telegram(msg)
-        logging.info(f"🚨 Inviati {len(alerts)} alert su Telegram")
+        logging.info(f" Inviati {len(alerts)} alert su Telegram")
     else:
-        logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
+        logging.info(f"️ Nessun drop su {processed} quote elaborate")
     
     logging.info("🔄 Ciclo completato.")
 

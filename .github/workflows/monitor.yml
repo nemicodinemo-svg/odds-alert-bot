@@ -1,23 +1,28 @@
 name: Odds Monitor
 on:
-workflow_dispatch:
+  workflow_dispatch:
+
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      
       - name: Install requests
         run: pip install requests
+      
       - name: Run monitor
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: python odds_monitor.py
+      
       - name: Upload state
         uses: actions/upload-artifact@v4
         with:

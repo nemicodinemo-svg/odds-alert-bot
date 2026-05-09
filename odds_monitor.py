@@ -58,9 +58,11 @@ def run():
     headers = {"x-apisports-key": API_KEY}
     base_url = "https://v3.football.api-sports.io"
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    dates = [today, tomorrow]
+# Calcola le date in orario italiano (UTC+2)
+now_italy = datetime.utcnow() + timedelta(hours=2)
+today = now_italy.strftime("%Y-%m-%d")
+tomorrow = (now_italy + timedelta(days=1)).strftime("%Y-%m-%d")
+dates = [today, tomorrow]
 
     teams_cache = fetch_teams_cache(dates, headers, base_url)
     logging.info(f"📦 Cache squadre: {len(teams_cache)} partite")

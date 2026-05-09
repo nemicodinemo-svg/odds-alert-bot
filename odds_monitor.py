@@ -1,4 +1,4 @@
-import requests, json, os, logging
+import requests, json, os, logging, sys
 from datetime import datetime, timedelta
 
 API_KEY = os.getenv("API_FOOTBALL_KEY")
@@ -6,7 +6,15 @@ TG_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 STATE_FILE = "odds_state.json"
 
-logging.basicConfig(filename="odds_monitor.log", level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s", filemode="a")
+# Logging su FILE + CONSOLE
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler("odds_monitor.log", mode="a"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 def load_state():
     try:
@@ -42,17 +50,42 @@ def fetch_teams_cache(dates, headers, base_url):
     cache = {}
     for date in dates:
         try:
-            res = requests.get(f"{base_url}/fixtures", headers=headers, params={"date": date}, timeout=10)
+            # DEBUG: Stampiamo URL e parametri
+            url = f"{base_url}/fixtures"
+            params = {"date": date}
+            logging.info(f"🔍 API Request: {url}?date={date}")
+            
+            res = requests.get(url, headers=headers, params=params, timeout=10)
+            
+            # DEBUG: Stampiamo headers di risposta e body grezzo
+            logging.info(f"📡 Status: {res.status_code}")
+            logging.info(f"📡 Headers: {dict(res.headers)}")
+            
             if res.status_code == 200:
-                for fix in res.json().get("response", []):
+                data = res.json()
+                logging.info(f"📦 RISPOSTA API (primi 500 char): {json.dumps(data)[:500]}")
+                
+                total_fixtures = len(data.get("response", []))
+                logging.info(f"📅 {date}: {total_fixtures} partite trovate")
+                
+                if total_fixtures == 0:
+                    logging.error(f"❌ API ha restituito response vuota per {date}")
+                    logging.error(f"🔑 API Key (primi 10 char): {API_KEY[:10] if API_KEY else 'None'}...")
+                
+                for fix in data.get("response", []):
                     fid = fix["fixture"]["id"]
                     cache[fid] = {
                         "home": fix["teams"]["home"]["name"],
                         "away": fix["teams"]["away"]["name"],
                         "league": fix["league"]["name"]
                     }
-        except:
-            pass
+            else:
+                logging.error(f"❌ Errore API: {res.status_code} - {res.text}")
+                
+        except Exception as e:
+            logging.error(f"❌ Eccezione fetch_teams_cache: {type(e).__name__}: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
     return cache
 
 def run():
@@ -64,14 +97,15 @@ def run():
     headers = {"x-apisports-key": API_KEY}
     base_url = "https://v3.football.api-sports.io"
 
-    # 🕐 Calcolo date in orario italiano (GitHub usa UTC, noi aggiungiamo +2h)
-    now_italy = datetime.utcnow() + timedelta(hours=2)
-    today = now_italy.strftime("%Y-%m-%d")
-    tomorrow = (now_italy + timedelta(days=1)).strftime("%Y-%m-%d")
+    # 🕐 Date: usiamo datetime.now() semplice (GitHub Actions è UTC)
+    today = datetime.now().strftime("%Y-%m-%d")
+    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     dates = [today, tomorrow]
+    
+    logging.info(f"📅 Date richieste: {today}, {tomorrow}")
 
     teams_cache = fetch_teams_cache(dates, headers, base_url)
-    logging.info(f"📦 Cache squadre: {len(teams_cache)} partite")
+    logging.info(f"📦 Cache finale: {len(teams_cache)} partite")
 
     state = load_state()
     first_run = len(state) == 0
@@ -86,11 +120,13 @@ def run():
                 logging.warning("⏳ Rate limit!")
                 break
             if res.status_code != 200:
+                logging.warning(f"⚠️ Odds API error {res.status_code}")
                 continue
 
             data = res.json()
             matches = data.get("response", [])
             if not matches:
+                logging.info(f"ℹ️ {date}: Nessuna partita con quote Bet365")
                 continue
 
             logging.info(f"✅ {date}: {len(matches)} partite con quote Bet365")
@@ -122,14 +158,14 @@ def run():
                                     if old and old > 0 and not first_run:
                                         drop = ((old - price) / old) * 100
                                         if drop >= 10:
-                                            alerts.append(f" <b>{v['value']}</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({drop:.1f}%↓)\n {italy_time}")
+                                            alerts.append(f"📉 <b>{v['value']}</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({drop:.1f}%↓)\n⏰ {italy_time}")
 
                                     state[key] = price
                                     processed += 1
                                 except ValueError:
                                     continue
                 except Exception as e:
-                    logging.error(f" Errore processing: {e}")
+                    logging.error(f"⚠️ Errore processing: {e}")
 
         except Exception as e:
             logging.error(f"❌ Errore critico {date}: {e}")
@@ -138,7 +174,7 @@ def run():
     
     if alerts:
         send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
-        logging.info(f" Inviati {len(alerts)} alert")
+        logging.info(f"🚨 Inviati {len(alerts)} alert")
     else:
         logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
     

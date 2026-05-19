@@ -1,28 +1,31 @@
 name: Odds Monitor
+
 on:
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
       - name: Install requests
         run: pip install requests
-      
+
       - name: Run monitor
+        run: python odds_monitor.py
         env:
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        run: python odds_monitor.py
-      
+
       - name: Upload state
         uses: actions/upload-artifact@v4
         with:
@@ -30,5 +33,4 @@ jobs:
           path: |
             odds_state.json
             odds_monitor.log
-          retention-days: 2
-          if-no-files-found: ignore
+          retention-days: 7

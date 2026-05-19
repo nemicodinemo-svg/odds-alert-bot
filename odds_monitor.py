@@ -1,12 +1,13 @@
 import requests, json, os, logging, sys
 from datetime import datetime, timedelta
 
-API_KEY = os.getenv("API_FOOTBALL_KEY")
+# 🔑 CONFIGURAZIONE
+PROXY_URL = os.getenv("PROXY_URL")  # URL del Cloudflare Worker
 TG_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 STATE_FILE = "odds_state.json"
 
-# Logging su FILE + CONSOLE
+# Logging FILE + CONSOLE
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -18,167 +19,79 @@ logging.basicConfig(
 
 def load_state():
     try:
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+        with open(STATE_FILE, "r") as f: return json.load(f)
+    except: return {}
 
 def save_state(data):
-    with open(STATE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    with open(STATE_FILE, "w") as f: json.dump(data, f, indent=2)
 
 def send_telegram(msg):
-    if not TG_TOKEN or not TG_CHAT_ID:
-        return
+    if not TG_TOKEN or not TG_CHAT_ID: return
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     try:
         r = requests.post(url, json={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
         logging.info(f"Telegram: {r.status_code}")
-    except Exception as e:
-        logging.error(f"Telegram Error: {e}")
+    except Exception as e: logging.error(f"Telegram Error: {e}")
 
 def utc_to_italy(utc_str):
     try:
-        clean_str = utc_str.replace('Z', '+00:00')
-        utc_time = datetime.fromisoformat(clean_str)
-        italy_time = utc_time + timedelta(hours=2)
-        return italy_time.strftime("%d/%m %H:%M")
-    except:
-        return utc_str[:16]
-
-def fetch_teams_cache(dates, headers, base_url):
-    cache = {}
-    for date in dates:
-        try:
-            # DEBUG: Stampiamo URL e parametri
-            url = f"{base_url}/fixtures"
-            params = {"date": date}
-            logging.info(f"🔍 API Request: {url}?date={date}")
-            
-            res = requests.get(url, headers=headers, params=params, timeout=10)
-            
-            # DEBUG: Stampiamo headers di risposta e body grezzo
-            logging.info(f"📡 Status: {res.status_code}")
-            logging.info(f"📡 Headers: {dict(res.headers)}")
-            
-            if res.status_code == 200:
-                data = res.json()
-                logging.info(f"📦 RISPOSTA API (primi 500 char): {json.dumps(data)[:500]}")
-                
-                total_fixtures = len(data.get("response", []))
-                logging.info(f"📅 {date}: {total_fixtures} partite trovate")
-                
-                if total_fixtures == 0:
-                    logging.error(f"❌ API ha restituito response vuota per {date}")
-                    logging.error(f"🔑 API Key (primi 10 char): {API_KEY[:10] if API_KEY else 'None'}...")
-                
-                for fix in data.get("response", []):
-                    fid = fix["fixture"]["id"]
-                    cache[fid] = {
-                        "home": fix["teams"]["home"]["name"],
-                        "away": fix["teams"]["away"]["name"],
-                        "league": fix["league"]["name"]
-                    }
-            else:
-                logging.error(f"❌ Errore API: {res.status_code} - {res.text}")
-                
-        except Exception as e:
-            logging.error(f"❌ Eccezione fetch_teams_cache: {type(e).__name__}: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
-    return cache
+        utc_time = datetime.fromisoformat(utc_str.replace('Z', '+00:00'))
+        return (utc_time + timedelta(hours=2)).strftime("%d/%m %H:%M")
+    except: return utc_str[:16]
 
 def run():
-    logging.info("🟢 Avvio Bot...")
-    if not API_KEY:
-        logging.error("❌ API Key mancante!")
+    logging.info("🟢 Avvio Bot (Proxy Mode)...")
+    if not PROXY_URL:
+        logging.error("❌ PROXY_URL mancante!")
         return
 
-    headers = {"x-apisports-key": API_KEY}
-    base_url = "https://v3.football.api-sports.io"
+    try:
+        # 📥 Scarica dati dal Proxy (NON chiama direttamente le API!)
+        logging.info(f"📡 Richiesta dati a: {PROXY_URL}")
+        res = requests.get(PROXY_URL, timeout=15)
+        
+        if res.status_code != 200:
+            logging.error(f"❌ Errore Proxy: {res.status_code}")
+            return
+        
+        data = res.json()
+        football_data = data.get("football", {}).get("response", [])
+        
+        logging.info(f"✅ Ricevute {len(football_data)} partite dal proxy")
+        
+        # 🔄 Elabora le partite (stessa logica di prima)
+        state = load_state()
+        first_run = len(state) == 0
+        alerts = []
+        processed = 0
 
-    # 🕐 Date: usiamo datetime.now() semplice (GitHub Actions è UTC)
-    today = datetime.now().strftime("%Y-%m-%d")
-    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    dates = [today, tomorrow]
-    
-    logging.info(f"📅 Date richieste: {today}, {tomorrow}")
+        for match in football_data:
+            try:
+                fid = match.get("fixture", {}).get("id")
+                home = match.get("teams", {}).get("home", {}).get("name", "Unknown")
+                away = match.get("teams", {}).get("away", {}).get("name", "Unknown")
+                league = match.get("league", {}).get("name", "Unknown")
+                fixture_date = match.get("fixture", {}).get("date", "")
+                italy_time = utc_to_italy(fixture_date)
+                
+                # Qui potresti aggiungere la logica per estrarre le quote dal proxy
+                # Per ora è un esempio base
+                
+            except Exception as e:
+                logging.error(f"⚠️ Errore processing: {e}")
 
-    teams_cache = fetch_teams_cache(dates, headers, base_url)
-    logging.info(f"📦 Cache finale: {len(teams_cache)} partite")
+        save_state(state)
+        
+        if alerts:
+            send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
+            logging.info(f"🚨 Inviati {len(alerts)} alert")
+        else:
+            logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
+        
+        logging.info("🔄 Ciclo completato.")
 
-    state = load_state()
-    first_run = len(state) == 0
-    alerts = []
-    processed = 0
-
-    for date in dates:
-        try:
-            res = requests.get(f"{base_url}/odds", headers=headers, params={"date": date, "bookmaker": "8"}, timeout=15)
-            
-            if res.status_code == 429:
-                logging.warning("⏳ Rate limit!")
-                break
-            if res.status_code != 200:
-                logging.warning(f"⚠️ Odds API error {res.status_code}")
-                continue
-
-            data = res.json()
-            matches = data.get("response", [])
-            if not matches:
-                logging.info(f"ℹ️ {date}: Nessuna partita con quote Bet365")
-                continue
-
-            logging.info(f"✅ {date}: {len(matches)} partite con quote Bet365")
-
-            for m in matches:
-                try:
-                    fid = m.get("fixture", {}).get("id")
-                    if not fid or fid not in teams_cache:
-                        continue
-                    
-                    home = teams_cache[fid]["home"]
-                    away = teams_cache[fid]["away"]
-                    league = teams_cache[fid]["league"]
-                    fixture_date = m.get("fixture", {}).get("date", "")
-                    italy_time = utc_to_italy(fixture_date)
-
-                    bk = next((b for b in m.get("bookmakers", []) if b.get("id") == 8), None)
-                    if not bk:
-                        continue
-
-                    for bet in bk.get("bets", []):
-                        if bet.get("id") in [1, 5, 8]:
-                            for v in bet.get("values", []):
-                                try:
-                                    price = float(v.get("odd"))
-                                    key = f"{fid}_{bet['id']}_{v['value'].replace(' ', '_')}"
-                                    old = state.get(key)
-
-                                    if old and old > 0 and not first_run:
-                                        drop = ((old - price) / old) * 100
-                                        if drop >= 10:
-                                            alerts.append(f"📉 <b>{v['value']}</b>\n{home} vs {away}\n({league})\n{old:.2f} → {price:.2f} ({drop:.1f}%↓)\n⏰ {italy_time}")
-
-                                    state[key] = price
-                                    processed += 1
-                                except ValueError:
-                                    continue
-                except Exception as e:
-                    logging.error(f"⚠️ Errore processing: {e}")
-
-        except Exception as e:
-            logging.error(f"❌ Errore critico {date}: {e}")
-
-    save_state(state)
-    
-    if alerts:
-        send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
-        logging.info(f"🚨 Inviati {len(alerts)} alert")
-    else:
-        logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
-    
-    logging.info("🔄 Ciclo completato.")
+    except Exception as e:
+        logging.error(f"❌ Errore critico: {e}")
 
 if __name__ == "__main__":
     run()

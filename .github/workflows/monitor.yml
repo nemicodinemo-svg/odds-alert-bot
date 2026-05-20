@@ -3,7 +3,7 @@ name: Odds Monitor
 on:
   workflow_dispatch:
 
-# ✅ Aggiungi questi permessi
+# ✅ QUESTA PARTE RISOLVE L'ERRORE 403
 permissions:
   contents: write
 

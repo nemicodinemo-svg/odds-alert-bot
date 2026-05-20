@@ -3,7 +3,6 @@ name: Odds Monitor
 on:
   workflow_dispatch:
 
-# ✅ QUESTA PARTE RISOLVE L'ERRORE 403
 permissions:
   contents: write
 
@@ -30,12 +29,17 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
 
-      # ✅ Salva lo stato nel repository (commit automatico)
+      # ✅ Salva solo se il file esiste
       - name: Commit and push state
         run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "actions@github.com"
-          git add odds_state.json
-          git diff --staged --quiet || git commit -m "📊 Update odds state $(date +%Y-%m-%d_%H:%M)"
-          git push
+          if [ -f odds_state.json ]; then
+            git config --global user.name "GitHub Actions Bot"
+            git config --global user.email "actions@github.com"
+            git add odds_state.json
+            git diff --staged --quiet || git commit -m "📊 Update odds state $(date +%Y-%m-%d_%H:%M)"
+            git push
+            echo "✅ Commit effettuato con successo"
+          else
+            echo "⚠️ File non trovato, salto commit (normale se 0 partite)"
+          fi
         continue-on-error: true

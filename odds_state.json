@@ -1,3 +1,38 @@
 {
-  "matches": {}
+  "matches": {
+    "1482133": {
+      "home": "Unknown",
+      "away": "Unknown",
+      "league": "CONCACAF W Champions Cup",
+      "kickoff": "2026-05-20T23:30:00+00:00",
+      "first_seen": "2026-05-20T22:38:58.499131",
+      "baseline_odds": {
+        "1x2": {
+          "Home": 3.25,
+          "Draw": 3.4,
+          "Away": 1.95
+        },
+        "over_2.5": 2.0,
+        "under_2.5": 1.8
+      },
+      "last_check": "2026-05-20T22:38:58.499137"
+    },
+    "1493828": {
+      "home": "Unknown",
+      "away": "Unknown",
+      "league": "USL League One",
+      "kickoff": "2026-05-20T23:30:00+00:00",
+      "first_seen": "2026-05-20T22:38:58.499294",
+      "baseline_odds": {
+        "1x2": {
+          "Home": 2.2,
+          "Draw": 3.2,
+          "Away": 2.9
+        },
+        "over_2.5": 1.85,
+        "under_2.5": 1.95
+      },
+      "last_check": "2026-05-20T22:38:58.499298"
+    }
+  }
 }

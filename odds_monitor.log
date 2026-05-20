@@ -1,0 +1,8 @@
+2026-05-20 21:43:36,596 | INFO | 🟢 Avvio Bot (Proxy Mode)...
+2026-05-20 21:43:36,596 | INFO | 📡 Richiesta a: https://odds-proxy-v2.nemicodinemo.workers.dev/
+2026-05-20 21:43:37,258 | INFO | ✅ Ricevute 10 partite
+2026-05-20 21:43:37,258 | WARNING | ⚠️ Nessun stato precedente: [Errno 2] No such file or directory: 'odds_state.json'
+2026-05-20 21:43:37,258 | INFO | 🆘 Primo lancio o baseline resettata → creo baseline
+2026-05-20 21:43:37,260 | INFO | 💾 Stato salvato: odds_state.json (3908 bytes)
+2026-05-20 21:43:37,260 | INFO | ℹ️ Nessun drop su 58 quote elaborate (10 nuove partite)
+2026-05-20 21:43:37,260 | INFO | 🔄 Ciclo completato. Baseline: 58 quote, 10 partite

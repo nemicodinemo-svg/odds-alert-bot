@@ -182,3 +182,23 @@ def run():
 
 if __name__ == "__main__":
     run()
+def run():
+    # ... tutto il codice esistente ...
+    
+    # 4. Salva nuovo stato e invia alert
+    save_state(state)
+    
+    # ✅ VERIFICA che il file sia stato creato
+    if os.path.exists(STATE_FILE):
+        file_size = os.path.getsize(STATE_FILE)
+        logging.info(f"💾 Stato salvato: {STATE_FILE} ({file_size} bytes)")
+    else:
+        logging.error(f"❌ ERRORE: {STATE_FILE} non è stato creato!")
+    
+    if alerts:
+        send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
+        logging.info(f"🚨 Inviati {len(alerts)} alert")
+    else:
+        logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
+    
+    logging.info("🔄 Ciclo completato.")

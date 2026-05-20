@@ -2,3 +2,4 @@ odds_monitor.log
 __pycache__/
 *.pyc
 *.pyo
+odds_monitor.log

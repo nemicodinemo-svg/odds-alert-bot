@@ -29,17 +29,16 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
 
-      # ✅ Salva solo se il file esiste
       - name: Commit and push state
         run: |
           if [ -f odds_state.json ]; then
             git config --global user.name "GitHub Actions Bot"
             git config --global user.email "actions@github.com"
-            git add odds_state.json
-            git diff --staged --quiet || git commit -m "📊 Update odds state $(date +%Y-%m-%d_%H:%M)"
+            git add odds_state.json odds_monitor.log
+            git diff --staged --quiet || git commit -m "📊 Update state $(date +%Y-%m-%d_%H:%M)"
             git push
-            echo "✅ Commit effettuato con successo"
+            echo "✅ Stato committato"
           else
-            echo "⚠️ File non trovato, salto commit (normale se 0 partite)"
+            echo "⚠️ Nessun file da committare"
           fi
         continue-on-error: true

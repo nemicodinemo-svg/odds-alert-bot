@@ -18,11 +18,12 @@ logging.basicConfig(
 )
 
 def load_state():
-    """Carica lo stato delle quote dal file locale (scaricato da GitHub Actions)"""
+    """Carica lo stato delle quote dal file nel repository"""
     try:
         with open(STATE_FILE, "r") as f: 
             return json.load(f)
     except: 
+        # Se il file non esiste, crea uno stato vuoto
         return {}
 
 def save_state(data):
@@ -74,9 +75,9 @@ def extract_odds(match):
     return odds
 
 def run():
-    logging.info(" Avvio Bot (Proxy Mode)...")
+    logging.info("🟢 Avvio Bot (Proxy Mode)...")
     if not PROXY_URL:
-        logging.error(" PROXY_URL mancante!")
+        logging.error("❌ PROXY_URL mancante!")
         return
 
     try:
@@ -92,7 +93,7 @@ def run():
         football_data = data.get("football", {}).get("response", [])
         
         if not football_data:
-            logging.warning("️ Nessuna partita ricevuta dal proxy")
+            logging.warning("⚠️ Nessuna partita ricevuta dal proxy")
             return
             
         logging.info(f"✅ Ricevute {len(football_data)} partite dal proxy")
@@ -164,11 +165,19 @@ def run():
                         processed += 1
                         
             except Exception as e:
-                logging.error(f"️ Errore match {fid}: {e}")
+                logging.error(f"⚠️ Errore match {fid}: {e}")
 
-        # 4. Salva nuovo stato e invia alert
+        # 4. Salva nuovo stato
         save_state(state)
         
+        # ✅ Verifica che il file sia stato creato
+        if os.path.exists(STATE_FILE):
+            file_size = os.path.getsize(STATE_FILE)
+            logging.info(f"💾 Stato salvato: {STATE_FILE} ({file_size} bytes)")
+        else:
+            logging.error(f"❌ ERRORE: {STATE_FILE} non è stato creato!")
+        
+        # 5. Invia alert
         if alerts:
             send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
             logging.info(f"🚨 Inviati {len(alerts)} alert")
@@ -182,23 +191,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-def run():
-    # ... tutto il codice esistente ...
-    
-    # 4. Salva nuovo stato e invia alert
-    save_state(state)
-    
-    # ✅ VERIFICA che il file sia stato creato
-    if os.path.exists(STATE_FILE):
-        file_size = os.path.getsize(STATE_FILE)
-        logging.info(f"💾 Stato salvato: {STATE_FILE} ({file_size} bytes)")
-    else:
-        logging.error(f"❌ ERRORE: {STATE_FILE} non è stato creato!")
-    
-    if alerts:
-        send_telegram("🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10]))
-        logging.info(f"🚨 Inviati {len(alerts)} alert")
-    else:
-        logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate")
-    
-    logging.info("🔄 Ciclo completato.")

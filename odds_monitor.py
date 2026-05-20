@@ -34,7 +34,10 @@ def save_state(state):
 
 def send_telegram(msg):
     """Invia alert a Telegram"""
-    if not TG_TOKEN or not TG_CHAT_ID: return
+    if not TG_TOKEN or not TG_CHAT_ID:
+        logging.warning("⚠️ Telegram non configurato")
+        return
+    
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     try:
         r = requests.post(url, json={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
@@ -55,34 +58,44 @@ def is_match_started(fixture_date):
     try:
         kickoff = datetime.fromisoformat(fixture_date.replace('Z', '+00:00'))
         now = datetime.now(kickoff.tzinfo)
-        # ✅ MODIFICA: Considera iniziata SOLO se sono passati 5 minuti dal fischio d'inizio
-        # Prima era -90 minuti (ignorava le partite imminenti). Ora è +5 minuti.
-        return (now - kickoff).total_seconds() > 300 
+        # Considera partita iniziata se sono passati 5 minuti dal fischio d'inizio
+        return (now - kickoff).total_seconds() > 300
     except:
         return False
 
 def extract_odds(match):
-    """Estrae quote Bet365 (ID=8)"""
+    """Estrae quote Bet365 (ID=8) dalla partita"""
     odds = {}
     bookmakers = match.get("bookmakers", [])
+    
+    # Cerca Bet365
     bet365 = next((b for b in bookmakers if b.get("id") == 8), None)
-    if not bet365: return odds
+    if not bet365:
+        return odds
     
     for bet in bet365.get("bets", []):
         bet_id = bet.get("id")
         values = {}
         for v in bet.get("values", []):
             if v.get("odd"):
-                try: values[v["value"]] = float(v["odd"])
-                except: pass
+                try:
+                    values[v["value"]] = float(v["odd"])
+                except:
+                    pass
         
-        if bet_id == 1: odds["1x2"] = values
-        elif bet_id == 5:
-            if "Over 2.5" in values: odds["over_2.5"] = values["Over 2.5"]
-            if "Under 2.5" in values: odds["under_2.5"] = values["Under 2.5"]
-        elif bet_id == 8:
-            if "Yes" in values: odds["btts_yes"] = values["Yes"]
-            if "No" in values: odds["btts_no"] = values["No"]
+        if bet_id == 1:  # 1X2
+            odds["1x2"] = values
+        elif bet_id == 5:  # Over/Under 2.5
+            if "Over 2.5" in values:
+                odds["over_2.5"] = values["Over 2.5"]
+            if "Under 2.5" in values:
+                odds["under_2.5"] = values["Under 2.5"]
+        elif bet_id == 8:  # BTTS (Goal/NoGoal)
+            if "Yes" in values:
+                odds["btts_yes"] = values["Yes"]
+            if "No" in values:
+                odds["btts_no"] = values["No"]
+    
     return odds
 
 def run():
@@ -90,20 +103,25 @@ def run():
     
     if not PROXY_URL:
         logging.error("❌ PROXY_URL mancante!")
+        save_state({"matches": {}})
         return
 
     try:
         # 1. Scarica dati dal Proxy
+        logging.info(f"📡 Richiesta a: {PROXY_URL}")
         res = requests.get(PROXY_URL, timeout=15)
+        
         if res.status_code != 200:
             logging.error(f"❌ Errore Proxy HTTP {res.status_code}")
+            save_state({"matches": {}})
             return
         
         data = res.json()
         football_data = data.get("football", {}).get("response", [])
         
         if not football_data:
-            logging.warning("⚠️ Nessuna partita ricevuta")
+            logging.warning("⚠️ Nessuna partita ricevuta (normale in orari notturni)")
+            save_state({"matches": {}})
             return
         
         logging.info(f"✅ Ricevute {len(football_data)} partite")
@@ -123,32 +141,35 @@ def run():
         for match in football_data:
             try:
                 fid = match.get("fixture", {}).get("id")
-                if not fid: continue
+                if not fid:
+                    continue
                 
                 current_match_ids.add(fid)
                 
-                home = match.get("teams", {}).get("home", {}).get("name", "Unknown")
-                away = match.get("teams", {}).get("away", {}).get("name", "Unknown")
+                # Estrai info partita con fallback multipli
+                teams = match.get("teams", {})
+                home_team = teams.get("home", {})
+                away_team = teams.get("away", {})
+                
+                home = home_team.get("name") or home_team.get("winner") or "Unknown Home"
+                away = away_team.get("name") or away_team.get("winner") or "Unknown Away"
+                
                 league = match.get("league", {}).get("name", "Unknown League")
                 fixture_date = match.get("fixture", {}).get("date", "")
                 italy_time = utc_to_italy(fixture_date)
                 
-                # DEBUG: Stampa orario per capire cosa succede
-                logging.debug(f" Controllo: {home} vs {away} @ {italy_time}")
-
                 # Verifica se partita già iniziata
                 if is_match_started(fixture_date):
                     if fid in matches:
                         finished_matches += 1
-                        # Non rimuovere subito, ma segnala
-                        # logging.debug(f"⏭️ Partita iniziata: {home} vs {away}")
                     continue  # Salta partite già iniziate
                 
                 active_matches += 1
                 
-                # Estrai quote attuali
+                # Estrai quote
                 current_odds = extract_odds(match)
-                if not current_odds: continue
+                if not current_odds:
+                    continue
                 
                 # 4. Gestione match
                 if fid not in matches:
@@ -163,7 +184,7 @@ def run():
                         "last_check": datetime.now().isoformat()
                     }
                     new_matches += 1
-                    logging.info(f"➕ Nuova partita monitorata: {home} vs {away} ({italy_time})")
+                    logging.info(f"➕ Nuova partita: {home} vs {away} ({italy_time})")
                 else:
                     # PARTITA GIÀ MONITORATA → Confronta con baseline
                     match_info = matches[fid]
@@ -171,13 +192,15 @@ def run():
                     
                     # Confronta ogni quota
                     for market, baseline_values in baseline_odds.items():
-                        if market not in current_odds: continue
+                        if market not in current_odds:
+                            continue
                         
                         current_values = current_odds[market]
                         
                         if isinstance(baseline_values, dict):
                             for outcome, base_price in baseline_values.items():
-                                if outcome not in current_values: continue
+                                if outcome not in current_values:
+                                    continue
                                 
                                 current_price = current_values[outcome]
                                 drop_pct = ((current_price - base_price) / base_price) * 100
@@ -188,7 +211,7 @@ def run():
                                         f"📉 <b>{outcome}</b> ({market})\n"
                                         f"<b>{home} vs {away}</b>\n"
                                         f"({league})\n"
-                                        f" Baseline: {base_price:.2f}\n"
+                                        f"📊 Baseline: {base_price:.2f}\n"
                                         f"📊 Attuale: {current_price:.2f}\n"
                                         f"🔻 Drop: {abs(drop_pct):.1f}%\n"
                                         f"⏰ {italy_time}"
@@ -206,17 +229,18 @@ def run():
                                     f"📉 <b>{market}</b>\n"
                                     f"<b>{home} vs {away}</b>\n"
                                     f"({league})\n"
-                                    f" Baseline: {base_price:.2f}\n"
+                                    f"📊 Baseline: {base_price:.2f}\n"
                                     f"📊 Attuale: {current_price:.2f}\n"
                                     f"🔻 Drop: {abs(drop_pct):.1f}%\n"
                                     f"⏰ {italy_time}"
                                 )
+                                logging.info(f"🎯 DROP: {home} vs {away} - {market} {base_price:.2f}→{current_price:.2f}")
                     
                     # Aggiorna timestamp ultimo controllo
                     match_info["last_check"] = datetime.now().isoformat()
                 
             except Exception as e:
-                logging.error(f"️ Errore match {fid}: {e}")
+                logging.error(f"⚠️ Errore match {fid}: {e}")
         
         # 5. Rimuovi partite vecchie o giocate
         old_count = len(matches)
@@ -231,9 +255,27 @@ def run():
         
         # 7. Invia alert
         if alerts:
-            msg = "🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10])
+            # Rimuovi duplicati (stessa partita, tieni solo il drop maggiore)
+            unique_alerts = []
+            seen_matches = {}
+            for alert in alerts:
+                lines = alert.split("\n")
+                if len(lines) > 1:
+                    match_key = lines[1]  # "Home vs Away"
+                    # Estrai percentuale drop
+                    drop_line = [l for l in lines if "🔻 Drop:" in l]
+                    if drop_line:
+                        drop_pct = float(drop_line[0].split(":")[1].strip().replace("%", ""))
+                    else:
+                        drop_pct = 0
+                    
+                    if match_key not in seen_matches or drop_pct > seen_matches[match_key]:
+                        seen_matches[match_key] = drop_pct
+                        unique_alerts.append(alert)
+            
+            msg = "🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(unique_alerts[:10])
             send_telegram(msg)
-            logging.info(f"🚨 Inviati {len(alerts)} alert")
+            logging.info(f"🚨 Inviati {len(unique_alerts)} alert unici")
         else:
             logging.info(f"ℹ️ Nessun drop. Monitoraggio attivo su {active_matches} partite ({new_matches} nuove)")
         
@@ -243,6 +285,7 @@ def run():
         logging.error(f"❌ Errore critico: {e}")
         import traceback
         logging.error(traceback.format_exc())
+        save_state({"matches": {}})
 
 if __name__ == "__main__":
     run()

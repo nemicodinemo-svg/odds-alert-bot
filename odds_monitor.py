@@ -7,10 +7,6 @@ TG_TOKEN = os.getenv("TG_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID")
 STATE_FILE = "odds_state.json"
 
-# ⏰ FINESTRA TEMPORALE (ore)
-BASELINE_HOURS = 24  # Confronta con baseline delle ultime 24 ore
-CLEANUP_HOURS = 48   # Rimuovi partite vecchie di 48 ore
-
 # Logging FILE + CONSOLE
 logging.basicConfig(
     level=logging.INFO,
@@ -22,62 +18,28 @@ logging.basicConfig(
 )
 
 def load_state():
-    """Carica stato precedente con timestamp"""
+    """Carica stato precedente"""
     try:
         with open(STATE_FILE, "r") as f:
-            state = json.load(f)
-        
-        # Controlla età della baseline
-        updated_at = state.get("updated_at")
-        if updated_at:
-            baseline_time = datetime.fromisoformat(updated_at)
-            hours_old = (datetime.now() - baseline_time).total_seconds() / 3600
-            
-            if hours_old > BASELINE_HOURS:
-                logging.info(f"⏰ Baseline vecchia di {hours_old:.1f}h → RESET (soglia: {BASELINE_HOURS}h)")
-                return {"odds": {}, "matches": {}, "updated_at": None}
-        
-        return state
+            return json.load(f)
     except Exception as e:
         logging.warning(f"⚠️ Nessun stato precedente: {e}")
-        return {"odds": {}, "matches": {}, "updated_at": None}
+        return {"matches": {}}
 
 def save_state(state):
-    """Salva stato con timestamp"""
-    state["updated_at"] = datetime.now().isoformat()
-    
-    # Pulisci partite vecchie
-    if "matches" in state:
-        cutoff = datetime.now() - timedelta(hours=CLEANUP_HOURS)
-        old_count = len(state["matches"])
-        state["matches"] = {
-            fid: m for fid, m in state["matches"].items()
-            if datetime.fromisoformat(m.get("first_seen", datetime.now().isoformat())) > cutoff
-        }
-        removed = old_count - len(state["matches"])
-        if removed > 0:
-            logging.info(f"🧹 Rimosse {removed} partite vecchie")
-    
+    """Salva stato aggiornato"""
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
-    
     logging.info(f"💾 Stato salvato: {STATE_FILE} ({os.path.getsize(STATE_FILE)} bytes)")
 
 def send_telegram(msg):
     """Invia alert a Telegram"""
-    if not TG_TOKEN or not TG_CHAT_ID:
-        logging.warning("⚠️ Telegram non configurato")
-        return
-    
+    if not TG_TOKEN or not TG_CHAT_ID: return
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, json={
-            "chat_id": TG_CHAT_ID,
-            "text": msg,
-            "parse_mode": "HTML"
-        }, timeout=10)
+        r = requests.post(url, json={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
         logging.info(f"✅ Telegram: {r.status_code}")
-    except Exception as e:
+    except Exception as e: 
         logging.error(f"❌ Telegram Error: {e}")
 
 def utc_to_italy(utc_str):
@@ -88,216 +50,194 @@ def utc_to_italy(utc_str):
     except:
         return utc_str[:16] if utc_str else "??"
 
+def is_match_started(fixture_date):
+    """Controlla se la partita è già iniziata"""
+    try:
+        kickoff = datetime.fromisoformat(fixture_date.replace('Z', '+00:00'))
+        now = datetime.now(kickoff.tzinfo)
+        # Considera partita iniziata se sono passati meno di 90 min dall'orario
+        return (now - kickoff).total_seconds() > -90*60
+    except:
+        return False
+
 def extract_odds(match):
-    """Estrae quote Bet365 (ID=8) dalla partita"""
+    """Estrae quote Bet365 (ID=8)"""
     odds = {}
     bookmakers = match.get("bookmakers", [])
-    
-    # Cerca Bet365
     bet365 = next((b for b in bookmakers if b.get("id") == 8), None)
-    if not bet365:
-        return odds
+    if not bet365: return odds
     
     for bet in bet365.get("bets", []):
         bet_id = bet.get("id")
         values = {}
         for v in bet.get("values", []):
             if v.get("odd"):
-                try:
-                    values[v["value"]] = float(v["odd"])
-                except:
-                    pass
+                try: values[v["value"]] = float(v["odd"])
+                except: pass
         
-        if bet_id == 1:  # 1X2
-            odds["1x2"] = values
-        elif bet_id == 5:  # Over/Under 2.5
-            if "Over 2.5" in values:
-                odds["over_2.5"] = values["Over 2.5"]
-            if "Under 2.5" in values:
-                odds["under_2.5"] = values["Under 2.5"]
-        elif bet_id == 8:  # BTTS
-            if "Yes" in values:
-                odds["btts_yes"] = values["Yes"]
-            if "No" in values:
-                odds["btts_no"] = values["No"]
-    
+        if bet_id == 1: odds["1x2"] = values
+        elif bet_id == 5:
+            if "Over 2.5" in values: odds["over_2.5"] = values["Over 2.5"]
+            if "Under 2.5" in values: odds["under_2.5"] = values["Under 2.5"]
+        elif bet_id == 8:
+            if "Yes" in values: odds["btts_yes"] = values["Yes"]
+            if "No" in values: odds["btts_no"] = values["No"]
     return odds
 
 def run():
-    logging.info("🟢 Avvio Bot (Proxy Mode)...")
+    logging.info("🟢 Avvio Bot (Match-Based Monitoring)...")
     
     if not PROXY_URL:
         logging.error("❌ PROXY_URL mancante!")
-        save_state({"odds": {}, "matches": {}, "updated_at": None})
         return
 
     try:
         # 1. Scarica dati dal Proxy
-        logging.info(f"📡 Richiesta a: {PROXY_URL}")
         res = requests.get(PROXY_URL, timeout=15)
-        
         if res.status_code != 200:
             logging.error(f"❌ Errore Proxy HTTP {res.status_code}")
-            save_state({"odds": {}, "matches": {}, "updated_at": None})
             return
         
         data = res.json()
         football_data = data.get("football", {}).get("response", [])
         
         if not football_data:
-            logging.warning("⚠️ Nessuna partita ricevuta (normale in orari notturni)")
-            save_state({"odds": {}, "matches": {}, "updated_at": None})
+            logging.warning("⚠️ Nessuna partita ricevuta")
             return
         
         logging.info(f"✅ Ricevute {len(football_data)} partite")
         
-        # 2. Carica stato precedente
+        # 2. Carica stato (match monitorati)
         state = load_state()
-        old_odds = state.get("odds", {})
-        old_matches = state.get("matches", {})
-        first_run = len(old_odds) == 0
+        matches = state.get("matches", {})
         
-        if first_run:
-            logging.info("🆘 Primo lancio o baseline resettata → creo baseline")
-        
-        # 3. Analizza partite
         alerts = []
-        processed = 0
         new_matches = 0
-        drops_found = 0
+        active_matches = 0
+        finished_matches = 0
+        
+        # 3. Processa partite attuali
+        current_match_ids = set()
         
         for match in football_data:
             try:
                 fid = match.get("fixture", {}).get("id")
-                if not fid:
-                    continue
+                if not fid: continue
                 
-                # Estrai info partita (con fallback)
-                home = match.get("teams", {}).get("home", {}).get("name")
-                away = match.get("teams", {}).get("away", {}).get("name")
+                current_match_ids.add(fid)
+                
+                home = match.get("teams", {}).get("home", {}).get("name", "Unknown")
+                away = match.get("teams", {}).get("away", {}).get("name", "Unknown")
                 league = match.get("league", {}).get("name", "Unknown League")
                 fixture_date = match.get("fixture", {}).get("date", "")
                 italy_time = utc_to_italy(fixture_date)
                 
-                # Fallback per nomi squadre
-                if not home:
-                    home = match.get("teams", {}).get("home", {}).get("winner", "Unknown Home")
-                if not away:
-                    away = match.get("teams", {}).get("away", {}).get("winner", "Unknown Away")
+                # Verifica se partita già iniziata
+                if is_match_started(fixture_date):
+                    if fid in matches:
+                        finished_matches += 1
+                        logging.debug(f"⏭️ Partita iniziata: {home} vs {away}")
+                    continue  # Salta partite già iniziate
                 
-                # Salva info partita se nuova
-                if fid not in old_matches:
-                    old_matches[fid] = {
+                active_matches += 1
+                
+                # Estrai quote attuali
+                current_odds = extract_odds(match)
+                if not current_odds: continue
+                
+                # 4. Gestione match
+                if fid not in matches:
+                    # NUOVA PARTITA → Crea baseline
+                    matches[fid] = {
                         "home": home,
                         "away": away,
                         "league": league,
-                        "date": fixture_date,
-                        "first_seen": datetime.now().isoformat()
+                        "kickoff": fixture_date,
+                        "first_seen": datetime.now().isoformat(),
+                        "baseline_odds": current_odds,
+                        "last_check": datetime.now().isoformat()
                     }
                     new_matches += 1
-                    logging.debug(f"➕ Nuova partita: {home} vs {away}")
-                
-                # Estrai quote
-                odds = extract_odds(match)
-                if not odds:
-                    continue
-                
-                # Confronta quote con baseline
-                for market, values in odds.items():
-                    if isinstance(values, dict):
-                        for outcome, price in values.items():
-                            key = f"{fid}_{market}_{outcome}"
-                            baseline = old_odds.get(key)
-                            
-                            # Se esiste baseline e non è primo run
-                            if baseline and baseline > 0 and not first_run:
-                                change = ((price - baseline) / baseline) * 100
+                    logging.info(f"➕ Nuova partita monitorata: {home} vs {away} ({italy_time})")
+                else:
+                    # PARTITA GIÀ MONITORATA → Confronta con baseline
+                    match_info = matches[fid]
+                    baseline_odds = match_info.get("baseline_odds", {})
+                    
+                    # Confronta ogni quota
+                    for market, baseline_values in baseline_odds.items():
+                        if market not in current_odds: continue
+                        
+                        current_values = current_odds[market]
+                        
+                        if isinstance(baseline_values, dict):
+                            for outcome, base_price in baseline_values.items():
+                                if outcome not in current_values: continue
                                 
-                                # ✅ SOLO DROP >= 10% (rimossi aumenti)
-                                if change <= -10:
-                                    drops_found += 1
+                                current_price = current_values[outcome]
+                                drop_pct = ((current_price - base_price) / base_price) * 100
+                                
+                                # 📉 ALERT DROP >= 10%
+                                if drop_pct <= -10:
                                     alerts.append(
                                         f"📉 <b>{outcome}</b> ({market})\n"
                                         f"<b>{home} vs {away}</b>\n"
                                         f"({league})\n"
-                                        f"📊 Quota iniziale: {baseline:.2f}\n"
-                                        f"📊 Quota attuale: {price:.2f}\n"
-                                        f"🔻 Drop: {abs(change):.1f}%\n"
+                                        f"📊 Baseline: {base_price:.2f}\n"
+                                        f"📊 Attuale: {current_price:.2f}\n"
+                                        f"🔻 Drop: {abs(drop_pct):.1f}%\n"
                                         f"⏰ {italy_time}"
                                     )
-                                    logging.info(f"🎯 DROP trovato: {home} vs {away} - {outcome} {baseline:.2f}→{price:.2f}")
-                            
-                            # Salva quota attuale
-                            old_odds[key] = price
-                            processed += 1
-                            
-                    else:
-                        # Quote singole (es: over_2.5)
-                        price = values
-                        key = f"{fid}_{market}"
-                        baseline = old_odds.get(key)
+                                    logging.info(f"🎯 DROP: {home} vs {away} - {outcome} {base_price:.2f}→{current_price:.2f}")
                         
-                        if baseline and baseline > 0 and not first_run:
-                            change = ((price - baseline) / baseline) * 100
+                        else:
+                            # Quote singole
+                            base_price = baseline_values
+                            current_price = current_values
+                            drop_pct = ((current_price - base_price) / base_price) * 100
                             
-                            # ✅ SOLO DROP >= 10%
-                            if change <= -10:
-                                drops_found += 1
+                            if drop_pct <= -10:
                                 alerts.append(
                                     f"📉 <b>{market}</b>\n"
                                     f"<b>{home} vs {away}</b>\n"
                                     f"({league})\n"
-                                    f"📊 Quota iniziale: {baseline:.2f}\n"
-                                    f"📊 Quota attuale: {price:.2f}\n"
-                                    f"🔻 Drop: {abs(change):.1f}%\n"
+                                    f"📊 Baseline: {base_price:.2f}\n"
+                                    f"📊 Attuale: {current_price:.2f}\n"
+                                    f"🔻 Drop: {abs(drop_pct):.1f}%\n"
                                     f"⏰ {italy_time}"
                                 )
-                                logging.info(f"🎯 DROP trovato: {home} vs {away} - {market} {baseline:.2f}→{price:.2f}")
-                        
-                        old_odds[key] = price
-                        processed += 1
-                        
+                    
+                    # Aggiorna timestamp ultimo controllo
+                    match_info["last_check"] = datetime.now().isoformat()
+                
             except Exception as e:
                 logging.error(f"⚠️ Errore match {fid}: {e}")
         
-        # 4. Salva stato aggiornato
-        state = {
-            "odds": old_odds,
-            "matches": old_matches,
-            "updated_at": datetime.now().isoformat()
-        }
+        # 5. Rimuovi partite vecchie o giocate
+        old_count = len(matches)
+        matches = {fid: m for fid, m in matches.items() if fid in current_match_ids}
+        removed = old_count - len(matches)
+        if removed > 0:
+            logging.info(f"🧹 Rimosse {removed} partite (giocate o non più in palinsesto)")
+        
+        # 6. Salva stato
+        state["matches"] = matches
         save_state(state)
         
-        # 5. Invia alert
+        # 7. Invia alert
         if alerts:
-            # Rimuovi duplicati (stessa partita, mercati diversi - tieni solo il drop maggiore)
-            unique_alerts = []
-            seen_matches = {}
-            for alert in alerts:
-                lines = alert.split("\n")
-                if len(lines) > 1:
-                    match_key = lines[1]  # "Home vs Away"
-                    # Estrai percentuale drop
-                    drop_line = [l for l in lines if "🔻 Drop:" in l][0] if any("🔻 Drop:" in l for l in lines) else ""
-                    drop_pct = float(drop_line.split(":")[1].strip().replace("%", "")) if drop_line else 0
-                    
-                    if match_key not in seen_matches or drop_pct > seen_matches[match_key]:
-                        seen_matches[match_key] = drop_pct
-                        unique_alerts.append(alert)
-            
-            msg = "🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(unique_alerts[:10])
+            msg = "🚨 <b>ALERT DROP QUOTE</b>\n\n" + "\n\n".join(alerts[:10])
             send_telegram(msg)
-            logging.info(f"🚨 Inviati {len(unique_alerts)} alert unici ({drops_found} drop totali)")
+            logging.info(f"🚨 Inviati {len(alerts)} alert")
         else:
-            logging.info(f"ℹ️ Nessun drop su {processed} quote elaborate ({new_matches} nuove partite)")
+            logging.info(f"ℹ️ Nessun drop. Monitoraggio attivo su {active_matches} partite ({new_matches} nuove)")
         
-        logging.info(f"🔄 Ciclo completato. Baseline: {len(old_odds)} quote, {len(old_matches)} partite")
+        logging.info(f"🔄 Ciclo completato.")
 
     except Exception as e:
         logging.error(f"❌ Errore critico: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        save_state({"odds": {}, "matches": {}, "updated_at": None})
 
 if __name__ == "__main__":
     run()

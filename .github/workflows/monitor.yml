@@ -19,6 +19,13 @@ jobs:
       - name: Install requests
         run: pip install requests
 
+      # ✅ PASSO CRUCIALE AGGIUNTO: Scarica lo stato precedente (quote vecchie)
+      - name: Download previous state
+        uses: actions/download-artifact@v4
+        with:
+          name: odds-state
+        continue-on-error: true  # Permette di continuare se è il primo lancio e il file non esiste
+
       - name: Run monitor
         run: python odds_monitor.py
         env:
@@ -26,6 +33,7 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
 
+      # ✅ Salva lo stato nuovo (quote attuali) per il giro successivo
       - name: Upload state
         uses: actions/upload-artifact@v4
         with:
@@ -34,3 +42,4 @@ jobs:
             odds_state.json
             odds_monitor.log
           retention-days: 7
+          overwrite: true

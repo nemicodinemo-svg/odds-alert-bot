@@ -9,22 +9,15 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install requests
         run: pip install requests
-
-      # ✅ Scarica stato precedente (v3 è più stabile)
-      - name: Download previous state
-        uses: actions/download-artifact@v3
-        with:
-          name: odds-state
-        continue-on-error: true
 
       - name: Run monitor
         run: python odds_monitor.py
@@ -33,13 +26,12 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
 
-      # ✅ Carica stato (assicurati che il file esista)
-      - name: Upload state
-        uses: actions/upload-artifact@v3
-        with:
-          name: odds-state
-          path: |
-            odds_state.json
-            odds_monitor.log
-          retention-days: 7
-          if-no-files-found: warn
+      # ✅ Salva lo stato nel repository (commit automatico)
+      - name: Commit and push state
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add odds_state.json
+          git diff --staged --quiet || git commit -m "📊 Update odds state $(date +%Y-%m-%d_%H:%M)"
+          git push
+        continue-on-error: true

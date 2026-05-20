@@ -3,6 +3,10 @@ name: Odds Monitor
 on:
   workflow_dispatch:
 
+# ✅ Aggiungi questi permessi
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest

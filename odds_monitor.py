@@ -55,8 +55,9 @@ def is_match_started(fixture_date):
     try:
         kickoff = datetime.fromisoformat(fixture_date.replace('Z', '+00:00'))
         now = datetime.now(kickoff.tzinfo)
-        # Considera partita iniziata se sono passati meno di 90 min dall'orario
-        return (now - kickoff).total_seconds() > -90*60
+        # ✅ MODIFICA: Considera iniziata SOLO se sono passati 5 minuti dal fischio d'inizio
+        # Prima era -90 minuti (ignorava le partite imminenti). Ora è +5 minuti.
+        return (now - kickoff).total_seconds() > 300 
     except:
         return False
 
@@ -132,11 +133,15 @@ def run():
                 fixture_date = match.get("fixture", {}).get("date", "")
                 italy_time = utc_to_italy(fixture_date)
                 
+                # DEBUG: Stampa orario per capire cosa succede
+                logging.debug(f" Controllo: {home} vs {away} @ {italy_time}")
+
                 # Verifica se partita già iniziata
                 if is_match_started(fixture_date):
                     if fid in matches:
                         finished_matches += 1
-                        logging.debug(f"⏭️ Partita iniziata: {home} vs {away}")
+                        # Non rimuovere subito, ma segnala
+                        # logging.debug(f"⏭️ Partita iniziata: {home} vs {away}")
                     continue  # Salta partite già iniziate
                 
                 active_matches += 1
@@ -183,7 +188,7 @@ def run():
                                         f"📉 <b>{outcome}</b> ({market})\n"
                                         f"<b>{home} vs {away}</b>\n"
                                         f"({league})\n"
-                                        f"📊 Baseline: {base_price:.2f}\n"
+                                        f" Baseline: {base_price:.2f}\n"
                                         f"📊 Attuale: {current_price:.2f}\n"
                                         f"🔻 Drop: {abs(drop_pct):.1f}%\n"
                                         f"⏰ {italy_time}"
@@ -201,7 +206,7 @@ def run():
                                     f"📉 <b>{market}</b>\n"
                                     f"<b>{home} vs {away}</b>\n"
                                     f"({league})\n"
-                                    f"📊 Baseline: {base_price:.2f}\n"
+                                    f" Baseline: {base_price:.2f}\n"
                                     f"📊 Attuale: {current_price:.2f}\n"
                                     f"🔻 Drop: {abs(drop_pct):.1f}%\n"
                                     f"⏰ {italy_time}"
@@ -211,7 +216,7 @@ def run():
                     match_info["last_check"] = datetime.now().isoformat()
                 
             except Exception as e:
-                logging.error(f"⚠️ Errore match {fid}: {e}")
+                logging.error(f"️ Errore match {fid}: {e}")
         
         # 5. Rimuovi partite vecchie o giocate
         old_count = len(matches)

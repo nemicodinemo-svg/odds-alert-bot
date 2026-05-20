@@ -18,80 +18,95 @@ logging.basicConfig(
 )
 
 def load_state():
+    """Carica lo stato delle quote dal file locale (scaricato da GitHub Actions)"""
     try:
-        with open(STATE_FILE, "r") as f: return json.load(f)
-    except: return {}
+        with open(STATE_FILE, "r") as f: 
+            return json.load(f)
+    except: 
+        return {}
 
 def save_state(data):
-    with open(STATE_FILE, "w") as f: json.dump(data, f, indent=2)
+    """Salva lo stato aggiornato"""
+    with open(STATE_FILE, "w") as f: 
+        json.dump(data, f, indent=2)
 
 def send_telegram(msg):
+    """Invia messaggio a Telegram"""
     if not TG_TOKEN or not TG_CHAT_ID: return
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     try:
         r = requests.post(url, json={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
         logging.info(f"Telegram: {r.status_code}")
-    except Exception as e: logging.error(f"Telegram Error: {e}")
+    except Exception as e: 
+        logging.error(f"Telegram Error: {e}")
 
 def utc_to_italy(utc_str):
+    """Converte data UTC in ora italiana"""
     try:
         utc_time = datetime.fromisoformat(utc_str.replace('Z', '+00:00'))
         return (utc_time + timedelta(hours=2)).strftime("%d/%m %H:%M")
-    except: return utc_str[:16]
+    except: 
+        return utc_str[:16]
 
 def extract_odds(match):
-    """Estrae le quote Bet365 da una partita (formato API-Football)"""
+    """Estrae le quote Bet365 (ID 8) dalla partita"""
     odds = {}
     bookmakers = match.get("bookmakers", [])
-    bet365 = next((b for b in bookmakers if b.get("id") == 8), None)
     
+    # Cerca Bet365
+    bet365 = next((b for b in bookmakers if b.get("id") == 8), None)
     if not bet365: return odds
     
     for bet in bet365.get("bets", []):
         bet_id = bet.get("id")
         values = {v["value"]: float(v["odd"]) for v in bet.get("values", []) if v.get("odd")}
         
+        # Mappa i tipi di scommessa
         if bet_id == 1:  # 1X2
             odds["1x2"] = values
         elif bet_id == 5:  # Over/Under 2.5
             if "Over 2.5" in values: odds["over_2.5"] = values["Over 2.5"]
             if "Under 2.5" in values: odds["under_2.5"] = values["Under 2.5"]
-        elif bet_id == 8:  # BTTS
+        elif bet_id == 8:  # BTTS (Goal/NoGoal)
             if "Yes" in values: odds["btts_yes"] = values["Yes"]
             if "No" in values: odds["btts_no"] = values["No"]
     
     return odds
 
 def run():
-    logging.info("🟢 Avvio Bot (Proxy Mode)...")
+    logging.info(" Avvio Bot (Proxy Mode)...")
     if not PROXY_URL:
-        logging.error("❌ PROXY_URL mancante!")
+        logging.error(" PROXY_URL mancante!")
         return
 
     try:
-        # 📥 Scarica dati dal Proxy
+        # 1. Scarica dati dal Proxy
         logging.info(f"📡 Richiesta dati a: {PROXY_URL}")
         res = requests.get(PROXY_URL, timeout=15)
         
         if res.status_code != 200:
-            logging.error(f"❌ Errore Proxy: {res.status_code} - {res.text}")
+            logging.error(f"❌ Errore Proxy: {res.status_code}")
             return
         
         data = res.json()
         football_data = data.get("football", {}).get("response", [])
         
         if not football_data:
-            logging.warning("⚠️ Nessuna partita ricevuta dal proxy")
+            logging.warning("️ Nessuna partita ricevuta dal proxy")
             return
             
         logging.info(f"✅ Ricevute {len(football_data)} partite dal proxy")
         
-        # 🔄 Elabora le partite
+        # 2. Carica stato precedente (se esiste)
         state = load_state()
         first_run = len(state) == 0
+        if first_run:
+            logging.info("🆘 Primo lancio: creo la baseline senza alert")
+        
         alerts = []
         processed = 0
 
+        # 3. Analizza ogni partita
         for match in football_data:
             try:
                 fid = match.get("fixture", {}).get("id")
@@ -103,31 +118,33 @@ def run():
                 fixture_date = match.get("fixture", {}).get("date", "")
                 italy_time = utc_to_italy(fixture_date)
                 
-                # Estrai quote
                 odds = extract_odds(match)
                 if not odds: continue
                 
-                # Controlla ogni tipo di quota per drop
+                # Controlla ogni quota estratta
                 for market, values in odds.items():
-                    if isinstance(values, dict):  # Es: 1x2 con {"1": 2.10, "X": 3.40}
+                    if isinstance(values, dict):  # Es: {"Home": 1.50, "Draw": 3.00}
                         for outcome, price in values.items():
                             key = f"{fid}_{market}_{outcome}"
                             old = state.get(key)
                             
+                            # Se c'era un prezzo precedente e non è il primo lancio
                             if old and old > 0 and not first_run:
                                 drop = ((old - price) / old) * 100
-                                if drop >= 10:
+                                if drop >= 10:  # Soglia drop 10%
                                     alerts.append(
-                                        f"📉 <b>{outcome}</b>\n"
+                                        f"📉 <b>{outcome}</b> ({market})\n"
                                         f"{home} vs {away}\n"
                                         f"({league})\n"
                                         f"{old:.2f} → {price:.2f} ({drop:.1f}%↓)\n"
                                         f"⏰ {italy_time}"
                                     )
                             
+                            # Aggiorna stato col prezzo nuovo
                             state[key] = price
                             processed += 1
-                    else:  # Es: over_2.5 con valore singolo 1.85
+                            
+                    else:  # Es: single value 1.85
                         price = values
                         key = f"{fid}_{market}"
                         old = state.get(key)
@@ -147,8 +164,9 @@ def run():
                         processed += 1
                         
             except Exception as e:
-                logging.error(f"⚠️ Errore processing match {fid}: {e}")
+                logging.error(f"️ Errore match {fid}: {e}")
 
+        # 4. Salva nuovo stato e invia alert
         save_state(state)
         
         if alerts:
@@ -161,8 +179,6 @@ def run():
 
     except Exception as e:
         logging.error(f"❌ Errore critico: {e}")
-        import traceback
-        logging.error(traceback.format_exc())
 
 if __name__ == "__main__":
     run()

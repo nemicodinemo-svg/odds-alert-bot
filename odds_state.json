@@ -1,38 +1,3 @@
 {
-  "matches": {
-    "1389108": {
-      "home": "Unknown Home",
-      "away": "Unknown Away",
-      "league": "Premijer Liga",
-      "kickoff": "2026-05-21T18:30:00+00:00",
-      "first_seen": "2026-05-21T18:30:39.763989",
-      "baseline_odds": {
-        "1x2": {
-          "Home": 2.7,
-          "Draw": 3.2,
-          "Away": 2.3
-        },
-        "over_2.5": 1.95,
-        "under_2.5": 1.85
-      },
-      "last_check": "2026-05-21T18:30:39.763997"
-    },
-    "1389109": {
-      "home": "Unknown Home",
-      "away": "Unknown Away",
-      "league": "Premijer Liga",
-      "kickoff": "2026-05-21T18:30:00+00:00",
-      "first_seen": "2026-05-21T18:30:39.764222",
-      "baseline_odds": {
-        "1x2": {
-          "Home": 1.7,
-          "Draw": 3.3,
-          "Away": 4.33
-        },
-        "over_2.5": 2.1,
-        "under_2.5": 1.7
-      },
-      "last_check": "2026-05-21T18:30:39.764226"
-    }
-  }
+  "matches": {}
 }

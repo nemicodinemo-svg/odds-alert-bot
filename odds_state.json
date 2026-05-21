@@ -5,7 +5,7 @@
       "away": "Unknown Away",
       "league": "Premijer Liga",
       "kickoff": "2026-05-21T18:30:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.971717",
+      "first_seen": "2026-05-21T14:00:57.597405",
       "baseline_odds": {
         "1x2": {
           "Home": 2.88,
@@ -15,14 +15,14 @@
         "over_2.5": 2.25,
         "under_2.5": 1.62
       },
-      "last_check": "2026-05-21T13:30:40.971723"
+      "last_check": "2026-05-21T14:00:57.597413"
     },
     "1389109": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Premijer Liga",
       "kickoff": "2026-05-21T18:30:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.971874",
+      "first_seen": "2026-05-21T14:00:57.597584",
       "baseline_odds": {
         "1x2": {
           "Home": 1.6,
@@ -32,14 +32,14 @@
         "over_2.5": 2.1,
         "under_2.5": 1.7
       },
-      "last_check": "2026-05-21T13:30:40.971877"
+      "last_check": "2026-05-21T14:00:57.597588"
     },
     "1397949": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Regionalliga - Mitte",
       "kickoff": "2026-05-21T17:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.972036",
+      "first_seen": "2026-05-21T14:00:57.597769",
       "baseline_odds": {
         "1x2": {
           "Home": 2.75,
@@ -49,14 +49,14 @@
         "over_2.5": 1.53,
         "under_2.5": 2.38
       },
-      "last_check": "2026-05-21T13:30:40.972039"
+      "last_check": "2026-05-21T14:00:57.597772"
     },
     "1436208": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Pro League",
       "kickoff": "2026-05-21T18:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.972998",
+      "first_seen": "2026-05-21T14:00:57.598570",
       "baseline_odds": {
         "1x2": {
           "Home": 2.5,
@@ -68,14 +68,14 @@
         "btts_yes": 1.5,
         "btts_no": 2.5
       },
-      "last_check": "2026-05-21T13:30:40.973004"
+      "last_check": "2026-05-21T14:00:57.598574"
     },
     "1436209": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Pro League",
       "kickoff": "2026-05-21T18:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.973671",
+      "first_seen": "2026-05-21T14:00:57.599267",
       "baseline_odds": {
         "1x2": {
           "Home": 1.12,
@@ -87,14 +87,14 @@
         "btts_yes": 2.1,
         "btts_no": 1.67
       },
-      "last_check": "2026-05-21T13:30:40.973674"
+      "last_check": "2026-05-21T14:00:57.599271"
     },
     "1436210": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Pro League",
       "kickoff": "2026-05-21T18:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.974285",
+      "first_seen": "2026-05-21T14:00:57.599905",
       "baseline_odds": {
         "1x2": {
           "Home": 2.8,
@@ -106,14 +106,14 @@
         "btts_yes": 1.4,
         "btts_no": 2.75
       },
-      "last_check": "2026-05-21T13:30:40.974288"
+      "last_check": "2026-05-21T14:00:57.599909"
     },
     "1436211": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Pro League",
       "kickoff": "2026-05-21T18:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.974886",
+      "first_seen": "2026-05-21T14:00:57.600555",
       "baseline_odds": {
         "1x2": {
           "Home": 1.91,
@@ -125,14 +125,14 @@
         "btts_yes": 1.5,
         "btts_no": 2.5
       },
-      "last_check": "2026-05-21T13:30:40.974889"
+      "last_check": "2026-05-21T14:00:57.600558"
     },
     "1436213": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Pro League",
       "kickoff": "2026-05-21T18:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.975535",
+      "first_seen": "2026-05-21T14:00:57.601253",
       "baseline_odds": {
         "1x2": {
           "Home": 4.33,
@@ -144,14 +144,14 @@
         "btts_yes": 1.62,
         "btts_no": 2.2
       },
-      "last_check": "2026-05-21T13:30:40.975538"
+      "last_check": "2026-05-21T14:00:57.601256"
     },
     "1438975": {
       "home": "Unknown Home",
       "away": "Unknown Away",
       "league": "Pro League",
       "kickoff": "2026-05-21T18:00:00+00:00",
-      "first_seen": "2026-05-21T13:30:40.976180",
+      "first_seen": "2026-05-21T14:00:57.601908",
       "baseline_odds": {
         "1x2": {
           "Home": 1.38,
@@ -163,7 +163,7 @@
         "btts_yes": 1.73,
         "btts_no": 2.0
       },
-      "last_check": "2026-05-21T13:30:40.976183"
+      "last_check": "2026-05-21T14:00:57.601911"
     }
   }
 }

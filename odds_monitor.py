@@ -126,6 +126,25 @@ def run():
         
         logging.info(f"✅ Ricevute {len(football_data)} partite")
         
+        # 🔍 DEBUG: Mostra struttura PRIMA partita
+        if football_data:
+            first_match = football_data[0]
+            logging.info("🔍 DEBUG - Chiavi principali: %s", list(first_match.keys()))
+            
+            # Teams
+            teams = first_match.get("teams", {})
+            logging.info("🔍 DEBUG - Teams dict: %s", teams)
+            logging.info("🔍 DEBUG - Home team: %s", teams.get('home', {}))
+            logging.info("🔍 DEBUG - Away team: %s", teams.get('away', {}))
+            
+            # Fixture
+            fixture = first_match.get("fixture", {})
+            logging.info("🔍 DEBUG - Fixture: %s", fixture)
+            
+            # League
+            league = first_match.get("league", {})
+            logging.info("🔍 DEBUG - League: %s", league)
+        
         # 2. Carica stato (match monitorati)
         state = load_state()
         matches = state.get("matches", {})
@@ -134,10 +153,10 @@ def run():
         new_matches = 0
         active_matches = 0
         
-        # 3. Processa TUTTE le partite (NON solo le prime 3!)
+        # 3. Processa TUTTE le partite
         current_match_ids = set()
         
-        for match in football_data:  # ← RIMOSSO [:3]
+        for match in football_data:
             try:
                 fid = match.get("fixture", {}).get("id")
                 if not fid:
